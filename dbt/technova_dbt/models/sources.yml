@@ -1,0 +1,39 @@
+version: 2
+
+sources:
+  - name: raw
+    database: awsdatacatalog
+    schema: technova_enterprise_catalog
+    description: "Fonte catalogada no AWS Glue Data Catalog a partir dos dados processados pelo Glue na camada Silver."
+    tables:
+      - name: vendas_curadas
+        description: "Tabela Silver da TechNova Varejo com vendas de e-commerce em formato Parquet particionado no S3."
+        columns:
+          - name: order_id
+            description: "Identificador único do pedido."
+          - name: user_id
+            description: "Identificador do cliente."
+          - name: customer_name
+            description: "Nome do cliente. Campo sensível para LGPD."
+          - name: customer_email
+            description: "E-mail do cliente. Campo sensível para LGPD."
+          - name: cpf
+            description: "CPF do cliente. Campo sensível para LGPD."
+          - name: product_id
+            description: "Identificador do produto."
+          - name: product_name
+            description: "Nome do produto vendido."
+          - name: category
+            description: "Categoria do produto."
+          - name: price_rs
+            description: "Preço original do produto."
+          - name: discount_pct
+            description: "Percentual de desconto aplicado."
+          - name: final_price_rs
+            description: "Preço final da venda após desconto."
+          - name: payment_method
+            description: "Método de pagamento utilizado."
+          - name: purchase_date
+            description: "Data da compra."
+          - name: region
+            description: "Região da venda."

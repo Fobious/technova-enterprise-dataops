@@ -1,0 +1,13 @@
+technova_dbt:
+  target: dev
+  outputs:
+    dev:
+      type: athena
+      database: awsdatacatalog
+      schema: technova_enterprise_catalog
+      region_name: us-east-1
+      s3_staging_dir: s3://technova-athena-results-947095430846-us-east-1/dbt-staging/
+      s3_data_dir: s3://technova-athena-results-947095430846-us-east-1/dbt-data/
+      s3_data_naming: schema_table
+      work_group: primary
+      threads: 4
