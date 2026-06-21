@@ -1,0 +1,21 @@
+order_id,user_id,customer_name,customer_email,cpf,product_id,product_name,category,price_rs,discount_pct,final_price_rs,payment_method,purchase_date,region
+1001,U001,Ana Souza,ana.souza@email.com,123.456.789-10,P101,Notebook Pro,Eletronicos,4500.00,10,4050.00,Cartao,2026-01-10,Sudeste
+1002,U002,Bruno Lima,bruno.lima@email.com,987.654.321-00,P102,Mouse Wireless,Eletronicos,120.00,0,120.00,Pix,2026-01-15,Sudeste
+1003,U003,Carla Mendes,carla.mendes@email.com,456.789.123-55,P103,Cadeira Ergonomica,Moveis,900.00,5,855.00,Boleto,2026-01-20,Sudeste
+1004,U004,Diego Alves,diego.alves@email.com,321.654.987-22,P104,Mesa Office,Moveis,750.00,0,750.00,Cartao,2026-02-05,Sul
+1005,U005,Elisa Rocha,elisa.rocha@email.com,789.123.456-88,P105,Monitor 27,Eletronicos,1300.00,15,1105.00,Pix,2026-02-10,Centro-Oeste
+1006,U001,Ana Souza,ana.souza@email.com,123.456.789-10,P106,Teclado Mecanico,Eletronicos,350.00,0,350.00,Cartao,2026-02-18,Sudeste
+1007,U002,Bruno Lima,bruno.lima@email.com,987.654.321-00,P101,Notebook Pro,Eletronicos,4500.00,20,3600.00,Cartao,2026-03-02,Sudeste
+1008,U006,Fernando Castro,fernando.castro@email.com,654.987.321-44,P107,Headset Pro,Eletronicos,250.00,0,250.00,Pix,2026-03-08,Sudeste
+1009,U007,Gabriela Martins,gabriela.martins@email.com,111.222.333-44,P108,Suporte Notebook,Acessorios,80.00,0,80.00,Boleto,2026-03-15,Sudeste
+1010,U008,Henrique Costa,henrique.costa@email.com,222.333.444-55,P105,Monitor 27,Eletronicos,1300.00,5,1235.00,Cartao,2026-03-25,Sudeste
+1011,U009,Isabela Fernandes,isabela.fernandes@email.com,333.444.555-66,P102,Mouse Wireless,Eletronicos,120.00,0,120.00,Pix,2026-04-04,Sul
+1012,U010,Joao Pereira,joao.pereira@email.com,444.555.666-77,P103,Cadeira Ergonomica,Moveis,900.00,10,810.00,Boleto,2026-04-12,Centro-Oeste
+1013,U001,Ana Souza,ana.souza@email.com,123.456.789-10,P105,Monitor 27,Eletronicos,1300.00,0,1300.00,Cartao,2026-04-20,Sudeste
+1014,U002,Bruno Lima,bruno.lima@email.com,987.654.321-00,P106,Teclado Mecanico,Eletronicos,350.00,0,350.00,Pix,2026-05-01,Sudeste
+1015,U003,Carla Mendes,carla.mendes@email.com,456.789.123-55,P101,Notebook Pro,Eletronicos,4500.00,10,4050.00,Cartao,2026-05-09,Sudeste
+1016,U004,Diego Alves,diego.alves@email.com,321.654.987-22,P108,Suporte Notebook,Acessorios,80.00,0,80.00,Boleto,2026-05-18,Sul
+1017,U005,Elisa Rocha,elisa.rocha@email.com,789.123.456-88,P107,Headset Pro,Eletronicos,250.00,0,250.00,Pix,2026-06-03,Centro-Oeste
+1018,U006,Fernando Castro,fernando.castro@email.com,654.987.321-44,P104,Mesa Office,Moveis,750.00,5,712.50,Cartao,2026-06-11,Sudeste
+1019,U007,Gabriela Martins,gabriela.martins@email.com,111.222.333-44,P105,Monitor 27,Eletronicos,1300.00,0,1300.00,Pix,2026-06-18,Sudeste
+1020,U008,Henrique Costa,henrique.costa@email.com,222.333.444-55,P101,Notebook Pro,Eletronicos,4500.00,15,3825.00,Cartao,2026-06-25,Sudeste
