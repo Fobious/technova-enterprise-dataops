@@ -6,8 +6,15 @@ from aws_cdk import (
     aws_s3_deployment as s3deploy,
     aws_iam as iam,
     aws_glue as glue,
+    aws_stepfunctions as sfn,
+    aws_stepfunctions_tasks as tasks,
+    aws_sns as sns,
+    aws_sns_subscriptions as subs,
+    aws_cloudwatch as cloudwatch,
+    aws_cloudwatch_actions as cloudwatch_actions,
 )
 from constructs import Construct
+
 
 
 class InfrastructureStack(Stack):
@@ -162,4 +169,122 @@ class InfrastructureStack(Stack):
                 update_behavior="UPDATE_IN_DATABASE",
                 delete_behavior="LOG",
             ),
+        )
+
+        glue_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "athena:StartQueryExecution",
+                    "athena:GetQueryExecution",
+                    "athena:GetQueryResults",
+                    "glue:GetDatabase",
+                    "glue:GetTable",
+                    "glue:GetPartitions",
+                    "glue:CreateTable",
+                    "glue:UpdateTable",
+                    "s3:GetObject",
+                    "s3:PutObject",
+                    "s3:ListBucket",
+                ],
+                resources=["*"],
+            )
+        )
+
+        dbt_job = glue.CfnJob(
+            self,
+            "TechNovaDbtTransformJob",
+            name="TechNova_Transformacao_DBT_job",
+            role=glue_role.role_arn,
+            command=glue.CfnJob.JobCommandProperty(
+                name="glueetl",
+                python_version="3",
+                script_location=f"s3://{scripts_bucket.bucket_name}/glue/transformacao_dbt.py",
+            ),
+            glue_version="5.0",
+            worker_type="G.1X",
+            number_of_workers=2,
+            timeout=5,
+            default_arguments={
+                "--job-language": "python",
+                "--enable-metrics": "true",
+                "--enable-continuous-cloudwatch-log": "true",
+            },
+        )
+
+        views_job = glue.CfnJob(
+            self,
+            "TechNovaAthenaViewsJob",
+            name="TechNova_Atualizacao_Views_Athena_job",
+            role=glue_role.role_arn,
+            command=glue.CfnJob.JobCommandProperty(
+                name="glueetl",
+                python_version="3",
+                script_location=f"s3://{scripts_bucket.bucket_name}/glue/atualizacao_views_athena.py",
+            ),
+            glue_version="5.0",
+            worker_type="G.1X",
+            number_of_workers=2,
+            timeout=5,
+            default_arguments={
+                "--job-language": "python",
+                "--DATABASE": "technova_enterprise_catalog",
+                "--ATHENA_OUTPUT": f"s3://{athena_results_bucket.bucket_name}/stepfunctions/",
+                "--enable-metrics": "true",
+                "--enable-continuous-cloudwatch-log": "true",
+            },
+        )
+
+        ingestao_task = tasks.GlueStartJobRun(
+            self,
+            "Ingestao Glue Raw Bronze Silver",
+            glue_job_name="TechNova_ETL_RawToBronzeSilver_job",
+            integration_pattern=sfn.IntegrationPattern.RUN_JOB,
+        )
+
+        dbt_task = tasks.GlueStartJobRun(
+            self,
+            "Transformacao dbt",
+            glue_job_name="TechNova_Transformacao_DBT_job",
+            integration_pattern=sfn.IntegrationPattern.RUN_JOB,
+        )
+
+        views_task = tasks.GlueStartJobRun(
+            self,
+            "Atualizacao Views Athena",
+            glue_job_name="TechNova_Atualizacao_Views_Athena_job",
+            integration_pattern=sfn.IntegrationPattern.RUN_JOB,
+        )
+
+        pipeline_definition = ingestao_task.next(dbt_task).next(views_task)
+
+        state_machine = sfn.StateMachine(
+            self,
+            "TechNovaDataOpsStateMachine",
+            state_machine_name="technova-dataops-stepfunctions",
+            definition_body=sfn.DefinitionBody.from_chainable(pipeline_definition),
+            timeout=Duration.minutes(30),
+        )
+
+        failure_topic = sns.Topic(
+            self,
+            "TechNovaFailureTopic",
+            topic_name="technova-pipeline-failure-alerts",
+        )
+
+        failure_topic.add_subscription(
+            subs.EmailSubscription("fabricio.dsantos@al.infnet.edu.br")
+        )
+
+        failure_alarm = cloudwatch.Alarm(
+            self,
+            "TechNovaStepFunctionsFailureAlarm",
+            alarm_name="technova-stepfunctions-failure-alarm",
+            metric=state_machine.metric_failed(),
+            threshold=1,
+            evaluation_periods=1,
+            comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        )
+
+        failure_alarm.add_alarm_action(
+            cloudwatch_actions.SnsAction(failure_topic)
         )
