@@ -1,0 +1,33 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+      nodejs: 20
+    commands:
+      - echo "Instalando dependencias do projeto..."
+      - npm install -g aws-cdk@latest
+      - python -m pip install --upgrade pip
+      - pip install dbt-athena-community
+      - cd infrastructure
+      - pip install -r requirements.txt
+      - cd ..
+
+  pre_build:
+    commands:
+      - echo "Executando testes dbt..."
+      - cd dbt/technova_dbt
+      - dbt debug --profiles-dir .
+      - dbt test --profiles-dir .
+      - cd ../..
+
+  build:
+    commands:
+      - echo "Executando deploy CDK..."
+      - cd infrastructure
+      - cdk deploy --require-approval never
+
+artifacts:
+  files:
+    - '**/*'

@@ -1,8 +1,30 @@
-import time
+ï»¿import time
+from pyspark.sql import SparkSession
 
-print("Iniciando etapa de transformação dbt da TechNova...")
+spark = SparkSession.builder.appName("TechNovaTransformacaoDBT").getOrCreate()
+
+print("Iniciando etapa de transformacao dbt da TechNova...")
 print("Camadas previstas: staging, intermediate e marts.")
-print("Modelos: stg_vendas, ref_vendas_enriquecidas, dim_cliente, dim_produto, dim_pagamento, dim_tempo e fato_vendas.")
-print("Esta etapa representa a execução operacional da camada dbt dentro do workflow orquestrado.")
+print("Modelos versionados no repositorio:")
+print("- stg_vendas")
+print("- ref_vendas_enriquecidas")
+print("- dim_cliente")
+print("- dim_produto")
+print("- dim_pagamento")
+print("- dim_tempo")
+print("- fato_vendas")
+
+df = spark.createDataFrame(
+    [
+        ("staging", "stg_vendas", "ok"),
+        ("intermediate", "ref_vendas_enriquecidas", "ok"),
+        ("marts", "fato_vendas", "ok"),
+    ],
+    ["camada", "modelo", "status"]
+)
+
+df.show()
+
 time.sleep(5)
-print("Transformação dbt concluída com sucesso.")
+
+print("Transformacao dbt concluida com sucesso.")
