@@ -18,7 +18,7 @@ regras_negocio as (
             else false
         end as flag_teve_desconto,
 
-        date_format(data_compra, '%Y-%m') as mes_referencia
+        to_char(data_compra, 'YYYY-MM') as mes_referencia
 
     from vendas
 

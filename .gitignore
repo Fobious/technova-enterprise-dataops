@@ -7,3 +7,6 @@ dbt/technova_dbt/target/
 dbt/technova_dbt/dbt_packages/
 dbt/technova_dbt/logs/
 dbt/technova_dbt/.user.yml
+
+# Evidencias locais do projeto
+/evidencias/

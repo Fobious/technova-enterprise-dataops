@@ -5,6 +5,8 @@ select distinct
     nome_cliente,
     email_cliente,
     cpf,
+    cidade,
+    uf,
     regiao
 from {{ ref('ref_vendas_enriquecidas') }}
 where id_cliente is not null

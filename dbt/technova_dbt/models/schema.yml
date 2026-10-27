@@ -1,0 +1,147 @@
+version: 2
+
+models:
+  - name: stg_vendas
+    description: "Camada de staging das vendas carregadas no Amazon Redshift Serverless."
+    columns:
+      - name: id_pedido
+        description: "Identificador único do pedido."
+        data_tests:
+          - not_null
+          - unique
+
+      - name: id_cliente
+        description: "Identificador do cliente."
+        data_tests:
+          - not_null
+
+      - name: id_produto
+        description: "Identificador do produto."
+        data_tests:
+          - not_null
+
+      - name: data_compra
+        description: "Data de realização da compra."
+        data_tests:
+          - not_null
+
+      - name: status_pedido
+        description: "Status operacional do pedido."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Concluido
+                  - Cancelado
+                  - Devolvido
+
+      - name: metodo_pagamento
+        description: "Método utilizado para pagamento."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Cartao
+                  - Pix
+                  - Boleto
+
+      - name: canal_venda
+        description: "Canal utilizado para realização da venda."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Site
+                  - App
+                  - Marketplace
+
+
+  - name: dim_cliente
+    description: "Dimensão de clientes da camada analítica."
+    columns:
+      - name: id_cliente
+        description: "Chave da dimensão cliente."
+        data_tests:
+          - not_null
+          - unique
+
+
+  - name: dim_produto
+    description: "Dimensão de produtos da camada analítica."
+    columns:
+      - name: id_produto
+        description: "Chave da dimensão produto."
+        data_tests:
+          - not_null
+          - unique
+
+
+  - name: dim_pagamento
+    description: "Dimensão de métodos de pagamento."
+    columns:
+      - name: id_pagamento
+        description: "Chave da dimensão de pagamento."
+        data_tests:
+          - not_null
+          - unique
+
+
+  - name: dim_tempo
+    description: "Dimensão temporal utilizada pela tabela fato."
+    columns:
+      - name: id_tempo
+        description: "Chave da dimensão de tempo no formato YYYYMMDD."
+        data_tests:
+          - not_null
+          - unique
+
+
+  - name: fato_vendas
+    description: "Tabela fato contendo os pedidos e métricas comerciais da TechNova Varejo."
+    columns:
+      - name: id_pedido
+        description: "Identificador único do pedido."
+        data_tests:
+          - not_null
+          - unique
+
+      - name: id_cliente
+        description: "Chave estrangeira para dim_cliente."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_cliente')
+                field: id_cliente
+
+      - name: id_produto
+        description: "Chave estrangeira para dim_produto."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_produto')
+                field: id_produto
+
+      - name: id_pagamento
+        description: "Chave estrangeira para dim_pagamento."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_pagamento')
+                field: id_pagamento
+
+      - name: id_tempo
+        description: "Chave estrangeira para dim_tempo."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_tempo')
+                field: id_tempo
+
+      - name: preco_final
+        description: "Valor final do pedido após desconto."
+        data_tests:
+          - not_null
