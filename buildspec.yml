@@ -1,33 +1,63 @@
 version: 0.2
 
+env:
+  shell: bash
+
 phases:
   install:
     runtime-versions:
       python: 3.11
       nodejs: 20
     commands:
-      - echo "Instalando dependencias do projeto..."
-      - npm install -g aws-cdk@latest
+      - echo "Instalando dependencias do projeto atual..."
       - python -m pip install --upgrade pip
-      - pip install dbt-athena-community
-      - cd infrastructure
-      - pip install -r requirements.txt
-      - cd ..
+      - python -m pip install "dbt-core==1.13.0b1" "dbt-redshift==1.11.1"
+      - python -m pip install -r infrastructure/requirements.txt
+      - npm install -g aws-cdk@latest
+      - dbt --version
+      - cdk --version
 
   pre_build:
     commands:
-      - echo "Executando testes dbt..."
+      - echo "Liberando temporariamente o IP do CodeBuild..."
+      - |
+        BUILD_EGRESS_IP="$(curl -fsS --max-time 15 https://checkip.amazonaws.com)"
+        python -c "import ipaddress,sys; ipaddress.IPv4Address(sys.argv[1])" "$BUILD_EGRESS_IP"
+        RULE_ID="$(aws ec2 authorize-security-group-ingress \
+          --group-id "$REDSHIFT_SECURITY_GROUP" \
+          --protocol tcp --port 5439 --cidr "$BUILD_EGRESS_IP/32" \
+          --region us-east-1 \
+          --query 'SecurityGroupRules[0].SecurityGroupRuleId' \
+          --output text)"
+        test -n "$RULE_ID" && test "$RULE_ID" != "None"
+        printf '%s' "$RULE_ID" > /tmp/technova_redshift_rule_id
+        sleep 5
+      - echo "Validando conexao com Redshift Serverless..."
       - cd dbt/technova_dbt
       - dbt debug --profiles-dir .
-      - dbt test --profiles-dir .
+      - dbt deps --profiles-dir .
       - cd ../..
 
   build:
     commands:
-      - echo "Executando deploy CDK..."
+      - echo "Executando modelos e testes reais no Redshift..."
+      - cd dbt/technova_dbt
+      - dbt build --profiles-dir . --no-partial-parse
+      - cd ../..
+      - echo "Executando deploy automatico da stack CI/CD..."
       - cd infrastructure
-      - cdk deploy --require-approval never
+      - cdk deploy InfrastructureStack --require-approval never --ci
 
-artifacts:
-  files:
-    - '**/*'
+  post_build:
+    commands:
+      - |
+        if [ -s /tmp/technova_redshift_rule_id ]; then
+          RULE_ID="$(cat /tmp/technova_redshift_rule_id)"
+          aws ec2 revoke-security-group-ingress \
+            --group-id "$REDSHIFT_SECURITY_GROUP" \
+            --security-group-rule-ids "$RULE_ID" \
+            --region us-east-1
+          rm -f /tmp/technova_redshift_rule_id
+          echo "Acesso temporario ao Redshift removido."
+        fi
+      - echo "Execucao do CodeBuild encerrada."

@@ -1,290 +1,215 @@
+"""TechNova Varejo | CI/CD do ambiente atual.
+
+Os buckets, o Glue, o Redshift Serverless, o DataBrew e o QuickSight
+ja existem e NAO sao recriados nem removidos por esta stack.
+Esta stack gerencia apenas a automacao GitHub -> CodePipeline ->
+CodeBuild (dbt + CDK) e a notificacao de falhas via SNS/EventBridge.
+"""
+
+import os
+
 from aws_cdk import (
-    Stack,
-    RemovalPolicy,
+    CfnOutput,
     Duration,
-    aws_s3 as s3,
-    aws_s3_deployment as s3deploy,
+    RemovalPolicy,
+    Stack,
+    aws_codebuild as codebuild,
+    aws_codepipeline as codepipeline,
+    aws_codepipeline_actions as actions,
+    aws_ec2 as ec2,
+    aws_events as events,
+    aws_events_targets as targets,
     aws_iam as iam,
-    aws_glue as glue,
-    aws_stepfunctions as sfn,
-    aws_stepfunctions_tasks as tasks,
+    aws_logs as logs,
+    aws_secretsmanager as secretsmanager,
     aws_sns as sns,
-    aws_sns_subscriptions as subs,
-    aws_cloudwatch as cloudwatch,
-    aws_cloudwatch_actions as cloudwatch_actions,
+    aws_sns_subscriptions as subscriptions,
 )
 from constructs import Construct
 
 
-
 class InfrastructureStack(Stack):
-
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        raw_bucket = s3.Bucket(
-            self,
-            "TechNovaRawBucket",
-            bucket_name=f"technova-raw-zone-{self.account}-{self.region}",
-            versioned=True,
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            removal_policy=RemovalPolicy.DESTROY,
-            auto_delete_objects=True,
+        # Recursos que ja existem na conta; informados aqui como referencias.
+        account = self.account
+        region = self.region
+        redshift_host = (
+            f"technova-workgroup.{account}.{region}.redshift-serverless.amazonaws.com"
+        )
+        connection_arn = (
+            f"arn:aws:codeconnections:{region}:{account}:"
+            "connection/41877cb3-0609-4769-95d7-8b0dbc002a99"
         )
 
-        bronze_bucket = s3.Bucket(
-            self,
-            "TechNovaBronzeBucket",
-            bucket_name=f"technova-bronze-zone-{self.account}-{self.region}",
-            versioned=True,
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            removal_policy=RemovalPolicy.DESTROY,
-            auto_delete_objects=True,
+        # O segredo e criado uma vez no Secrets Manager (fora deste CDK),
+        # com JSON {"username": "...", "password": "..."}.
+        secret_name = "technova/redshift/dbt"
+        secret = secretsmanager.Secret.from_secret_name_v2(
+            self, "ExistingRedshiftDbtSecret", secret_name
         )
 
-        silver_bucket = s3.Bucket(
+        # Log do build: mantido mesmo quando esta stack for apagada.
+        build_logs = logs.LogGroup(
             self,
-            "TechNovaSilverBucket",
-            bucket_name=f"technova-silver-zone-{self.account}-{self.region}",
-            versioned=True,
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            removal_policy=RemovalPolicy.DESTROY,
-            auto_delete_objects=True,
+            "BuildLogs",
+            log_group_name="/aws/codebuild/technova-dbt-cicd",
+            retention=logs.RetentionDays.ONE_WEEK,
+            removal_policy=RemovalPolicy.RETAIN,
         )
 
-        scripts_bucket = s3.Bucket(
+        # CodeBuild pode usar a VPC do Redshift, quando configurada.
+        # Configuracao opcional via TECHNOVA_CODEBUILD_VPC_ID e
+        # TECHNOVA_CODEBUILD_SG_ID. A VPC precisa de subnets privadas
+        # com saida para a internet/NAT para instalar dependencias.
+        vpc_id = os.getenv("TECHNOVA_CODEBUILD_VPC_ID")
+        sg_id = os.getenv("TECHNOVA_CODEBUILD_SG_ID")
+        network_props = {}
+        if vpc_id or sg_id:
+            if not (vpc_id and sg_id):
+                raise ValueError(
+                    "Informe TECHNOVA_CODEBUILD_VPC_ID e "
+                    "TECHNOVA_CODEBUILD_SG_ID juntos."
+                )
+            vpc = ec2.Vpc.from_lookup(self, "ExistingVpc", vpc_id=vpc_id)
+            security_group = ec2.SecurityGroup.from_security_group_id(
+                self, "ExistingCodeBuildSg", sg_id, mutable=False
+            )
+            network_props = {
+                "vpc": vpc,
+                "security_groups": [security_group],
+                "subnet_selection": ec2.SubnetSelection(
+                    subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS
+                ),
+            }
+
+        build_project = codebuild.PipelineProject(
             self,
-            "TechNovaScriptsBucket",
-            bucket_name=f"technova-scripts-{self.account}-{self.region}",
-            versioned=True,
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            removal_policy=RemovalPolicy.DESTROY,
-            auto_delete_objects=True,
-        )
-
-        athena_results_bucket = s3.Bucket(
-            self,
-            "TechNovaAthenaResultsBucket",
-            bucket_name=f"technova-athena-results-{self.account}-{self.region}",
-            versioned=True,
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            removal_policy=RemovalPolicy.DESTROY,
-            auto_delete_objects=True,
-        )
-
-        s3deploy.BucketDeployment(
-            self,
-            "DeployRawData",
-            sources=[s3deploy.Source.asset("../data")],
-            destination_bucket=raw_bucket,
-        )
-
-        s3deploy.BucketDeployment(
-            self,
-            "DeployGlueScripts",
-            sources=[s3deploy.Source.asset("../glue")],
-            destination_bucket=scripts_bucket,
-            destination_key_prefix="glue",
-        )
-
-        glue_role = iam.Role(
-            self,
-            "TechNovaGlueRole",
-            assumed_by=iam.ServicePrincipal("glue.amazonaws.com"),
-            role_name="TechNovaGlueServiceRole",
-        )
-
-        glue_role.add_managed_policy(
-            iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSGlueServiceRole")
-        )
-
-        raw_bucket.grant_read(glue_role)
-        bronze_bucket.grant_read_write(glue_role)
-        silver_bucket.grant_read_write(glue_role)
-        scripts_bucket.grant_read(glue_role)
-        athena_results_bucket.grant_read_write(glue_role)
-
-        glue_database = glue.CfnDatabase(
-            self,
-            "TechNovaGlueDatabase",
-            catalog_id=self.account,
-            database_input=glue.CfnDatabase.DatabaseInputProperty(
-                name="technova_enterprise_catalog",
-                description="Catálogo de dados da TechNova Varejo para o AT.",
+            "TechNovaDbtBuild",
+            project_name="technova-dbt-cicd",
+            description="dbt Redshift e CDK: validacao, testes e deploy",
+            build_spec=codebuild.BuildSpec.from_source_filename("buildspec.yml"),
+            environment=codebuild.BuildEnvironment(
+                build_image=codebuild.LinuxBuildImage.STANDARD_7_0,
+                compute_type=codebuild.ComputeType.SMALL,
+                environment_variables={
+                    "REDSHIFT_HOST": codebuild.BuildEnvironmentVariable(
+                        value=redshift_host
+                    ),
+                    "REDSHIFT_SECURITY_GROUP": codebuild.BuildEnvironmentVariable(
+                        value="sg-023a1931ab3a5adae"
+                    ),
+                    "REDSHIFT_USER": codebuild.BuildEnvironmentVariable(
+                        value=f"{secret_name}:username",
+                        type=codebuild.BuildEnvironmentVariableType.SECRETS_MANAGER,
+                    ),
+                    "REDSHIFT_PASSWORD": codebuild.BuildEnvironmentVariable(
+                        value=f"{secret_name}:password",
+                        type=codebuild.BuildEnvironmentVariableType.SECRETS_MANAGER,
+                    ),
+                },
             ),
-        )
-
-        glue_job = glue.CfnJob(
-            self,
-            "TechNovaRawToBronzeSilverJob",
-            name="TechNova_ETL_RawToBronzeSilver_job",
-            role=glue_role.role_arn,
-            command=glue.CfnJob.JobCommandProperty(
-                name="glueetl",
-                python_version="3",
-                script_location=f"s3://{scripts_bucket.bucket_name}/glue/raw_to_bronze_silver.py",
+            timeout=Duration.minutes(30),
+            logging=codebuild.LoggingOptions(
+                cloud_watch=codebuild.CloudWatchLoggingOptions(
+                    log_group=build_logs
+                )
             ),
-            glue_version="5.0",
-            worker_type="G.1X",
-            number_of_workers=2,
-            timeout=10,
-            default_arguments={
-                "--job-language": "python",
-                "--RAW_BUCKET": raw_bucket.bucket_name,
-                "--BRONZE_BUCKET": bronze_bucket.bucket_name,
-                "--SILVER_BUCKET": silver_bucket.bucket_name,
-                "--enable-metrics": "true",
-                "--enable-continuous-cloudwatch-log": "true",
-            },
+            **network_props,
         )
+        secret.grant_read(build_project)
 
-        crawler_role = iam.Role(
-            self,
-            "TechNovaCrawlerRole",
-            assumed_by=iam.ServicePrincipal("glue.amazonaws.com"),
-            role_name="TechNovaCrawlerServiceRole",
-        )
-
-        crawler_role.add_managed_policy(
-            iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSGlueServiceRole")
-        )
-
-        bronze_bucket.grant_read(crawler_role)
-        silver_bucket.grant_read(crawler_role)
-
-        glue.CfnCrawler(
-            self,
-            "TechNovaSilverCrawler",
-            name="technova-crawler-silver",
-            role=crawler_role.role_arn,
-            database_name=glue_database.ref,
-            targets=glue.CfnCrawler.TargetsProperty(
-                s3_targets=[
-                    glue.CfnCrawler.S3TargetProperty(
-                        path=f"s3://{silver_bucket.bucket_name}/vendas_curadas/"
-                    )
-                ]
-            ),
-            schema_change_policy=glue.CfnCrawler.SchemaChangePolicyProperty(
-                update_behavior="UPDATE_IN_DATABASE",
-                delete_behavior="LOG",
-            ),
-        )
-
-        glue_role.add_to_policy(
+        # Permitir abertura e fechamento temporario da porta do Redshift.
+        build_project.add_to_role_policy(
             iam.PolicyStatement(
                 actions=[
-                    "athena:StartQueryExecution",
-                    "athena:GetQueryExecution",
-                    "athena:GetQueryResults",
-                    "glue:GetDatabase",
-                    "glue:GetTable",
-                    "glue:GetPartitions",
-                    "glue:CreateTable",
-                    "glue:UpdateTable",
-                    "s3:GetObject",
-                    "s3:PutObject",
-                    "s3:ListBucket",
+                    "ec2:AuthorizeSecurityGroupIngress",
+                    "ec2:RevokeSecurityGroupIngress",
+                ],
+                resources=[
+                    f"arn:aws:ec2:{region}:{account}:security-group/sg-023a1931ab3a5adae"
+                ],
+            )
+        )
+
+        # O deploy automatico do CDK usa APENAS os papeis criados
+        # pelo 'cdk bootstrap' na conta e regiao corretas.
+        qualifier = "hnb659fds"  # qualifier padrao do bootstrap CDK
+        role_names = (
+            "deploy-role", "file-publishing-role", "image-publishing-role", "lookup-role"
+        )
+        deploy_roles = [
+            f"arn:aws:iam::{account}:role/cdk-{qualifier}-{name}-{account}-{region}"
+            for name in role_names
+        ]
+        build_project.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["sts:AssumeRole"], resources=deploy_roles
+            )
+        )
+        build_project.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "cloudformation:DescribeStacks",
+                    "cloudformation:DescribeStackEvents",
+                    "cloudformation:ListStacks",
+                    "cloudformation:GetTemplate",
+                    "ssm:GetParameter",
                 ],
                 resources=["*"],
             )
         )
 
-        dbt_job = glue.CfnJob(
+        source = codepipeline.Artifact("SourceArtifact")
+        source_action = actions.CodeStarConnectionsSourceAction(
+            action_name="GitHubMain",
+            owner="Fobious",
+            repo="technova-enterprise-dataops",
+            branch="main",
+            connection_arn=connection_arn,
+            output=source,
+            trigger_on_push=True,
+        )
+
+        pipeline = codepipeline.Pipeline(
             self,
-            "TechNovaDbtTransformJob",
-            name="TechNova_Transformacao_DBT_job",
-            role=glue_role.role_arn,
-            command=glue.CfnJob.JobCommandProperty(
-                name="glueetl",
-                python_version="3",
-                script_location=f"s3://{scripts_bucket.bucket_name}/glue/transformacao_dbt.py",
-            ),
-            glue_version="5.0",
-            worker_type="G.1X",
-            number_of_workers=2,
-            timeout=5,
-            default_arguments={
-                "--job-language": "python",
-                "--enable-metrics": "true",
-                "--enable-continuous-cloudwatch-log": "true",
-            },
+            "TechNovaPipeline",
+            pipeline_name="technova-dataops-cicd",
+            pipeline_type=codepipeline.PipelineType.V2,
+            restart_execution_on_update=False,
+            cross_account_keys=False,
+        )
+        pipeline.add_stage(stage_name="Source", actions=[source_action])
+        pipeline.add_stage(
+            stage_name="BuildAndDeploy",
+            actions=[actions.CodeBuildAction(
+                action_name="DbtBuildAndCdkDeploy",
+                project=build_project,
+                input=source,
+            )],
         )
 
-        views_job = glue.CfnJob(
+        # Monitorar falhas da NOVA pipeline; nao recria Step Functions antigas.
+        alert_topic = sns.Topic(
             self,
-            "TechNovaAthenaViewsJob",
-            name="TechNova_Atualizacao_Views_Athena_job",
-            role=glue_role.role_arn,
-            command=glue.CfnJob.JobCommandProperty(
-                name="glueetl",
-                python_version="3",
-                script_location=f"s3://{scripts_bucket.bucket_name}/glue/atualizacao_views_athena.py",
-            ),
-            glue_version="5.0",
-            worker_type="G.1X",
-            number_of_workers=2,
-            timeout=5,
-            default_arguments={
-                "--job-language": "python",
-                "--DATABASE": "technova_enterprise_catalog",
-                "--ATHENA_OUTPUT": f"s3://{athena_results_bucket.bucket_name}/stepfunctions/",
-                "--enable-metrics": "true",
-                "--enable-continuous-cloudwatch-log": "true",
-            },
+            "PipelineFailureTopic",
+            topic_name="technova-cicd-failure-alerts",
+        )
+        alert_email = self.node.try_get_context("alert_email")
+        if alert_email:
+            alert_topic.add_subscription(
+                subscriptions.EmailSubscription(str(alert_email))
+            )
+        pipeline.on_state_change(
+            "PipelineFailed",
+            event_pattern=events.EventPattern(detail={"state": ["FAILED"]}),
+            target=targets.SnsTopic(alert_topic),
         )
 
-        ingestao_task = tasks.GlueStartJobRun(
-            self,
-            "Ingestao Glue Raw Bronze Silver",
-            glue_job_name="TechNova_ETL_RawToBronzeSilver_job",
-            integration_pattern=sfn.IntegrationPattern.RUN_JOB,
-        )
-
-        dbt_task = tasks.GlueStartJobRun(
-            self,
-            "Transformacao dbt",
-            glue_job_name="TechNova_Transformacao_DBT_job",
-            integration_pattern=sfn.IntegrationPattern.RUN_JOB,
-        )
-
-        views_task = tasks.GlueStartJobRun(
-            self,
-            "Atualizacao Views Athena",
-            glue_job_name="TechNova_Atualizacao_Views_Athena_job",
-            integration_pattern=sfn.IntegrationPattern.RUN_JOB,
-        )
-
-        pipeline_definition = ingestao_task.next(dbt_task).next(views_task)
-
-        state_machine = sfn.StateMachine(
-            self,
-            "TechNovaDataOpsStateMachine",
-            state_machine_name="technova-dataops-stepfunctions",
-            definition_body=sfn.DefinitionBody.from_chainable(pipeline_definition),
-            timeout=Duration.minutes(30),
-        )
-
-        failure_topic = sns.Topic(
-            self,
-            "TechNovaFailureTopic",
-            topic_name="technova-pipeline-failure-alerts",
-        )
-
-        failure_topic.add_subscription(
-            subs.EmailSubscription("fabricio.dsantos@al.infnet.edu.br")
-        )
-
-        failure_alarm = cloudwatch.Alarm(
-            self,
-            "TechNovaStepFunctionsFailureAlarm",
-            alarm_name="technova-stepfunctions-failure-alarm",
-            metric=state_machine.metric_failed(),
-            threshold=1,
-            evaluation_periods=1,
-            comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
-        )
-
-        failure_alarm.add_alarm_action(
-            cloudwatch_actions.SnsAction(failure_topic)
-        )
+        CfnOutput(self, "PipelineName", value=pipeline.pipeline_name)
+        CfnOutput(self, "BuildProject", value=build_project.project_name)
+        CfnOutput(self, "AlertsTopicArn", value=alert_topic.topic_arn)
+        CfnOutput(self, "ExistingGlueJob", value="TechNova_Raw_To_Bronze_Silver")
+        CfnOutput(self, "ExistingRedshiftWorkgroup", value="technova-workgroup")
+        CfnOutput(self, "ExistingRedshiftDatabase", value="dev")
