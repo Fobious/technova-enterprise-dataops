@@ -1,83 +1,101 @@
 # TechNova Varejo | Enterprise DataOps
 
-### Engenharia de Dados, Analytics, MLOps e CI/CD na AWS
+**Engenharia de Dados, Governança, Analytics e CI/CD na AWS**  
+Projeto acadêmico desenvolvido a partir de um cenário de modernização de dados no varejo.
 
-Projeto acadêmico de implementação de uma arquitetura moderna de dados na AWS, integrando ingestão, processamento, transformação, qualidade, análise e automação de infraestrutura.
+**[📚 Documentação interativa do dbt](https://fobious.github.io/technova-enterprise-dataops/)** · **[💻 Repositório GitHub](https://github.com/Fobious/technova-enterprise-dataops)**
 
 ---
 
-## 1. Visão geral
+## 1. Contexto do negócio
 
-O projeto TechNova Varejo demonstra a construção de um ambiente de dados em nuvem, utilizando serviços gerenciados da AWS e práticas de engenharia de dados.
+A **TechNova Varejo** representa uma empresa de comércio varejista que precisa acompanhar suas vendas com dados confiáveis. No cenário inicial, o sistema comercial exportava periodicamente arquivos CSV para uma pasta local. A consolidação desses arquivos e a atualização dos relatórios dependiam de atividades manuais, dificultando a rastreabilidade, a padronização e a análise histórica.
 
-A solução contempla:
+O objetivo do projeto foi transformar esse processo em uma arquitetura de dados na AWS, com ingestão automatizada de arquivos, tratamento em camadas, controles de qualidade, governança, visualização de indicadores e implantação automatizada do código.
 
-- Arquitetura de dados em camadas Bronze, Silver e Gold.
-- Processamento e catalogação com AWS Glue.
-- Armazenamento no Amazon S3.
-- Transformações analíticas no Redshift Serverless.
-- Modelagem dimensional e testes de qualidade com dbt.
-- Dashboards gerenciais no Amazon QuickSight.
-- Preparação de dados para Machine Learning.
-- Integração e implantação contínua (CI/CD).
-- Monitoramento e notificações de falhas.
+> **Escopo:** a solução implementada utiliza ingestão de arquivos em lote (*batch*). O monitoramento de vendas em tempo real com streaming foi estudado como possibilidade de evolução, não como funcionalidade já implantada.
 
-## 📚 Documentação técnica — dbt Docs
+## 2. Dados utilizados
 
-A documentação dos modelos analíticos foi gerada com `dbt docs generate` e publicada no GitHub Pages.
+A base do projeto é composta por exportações históricas de vendas em **CSV**, com dados de pedidos, clientes, produtos, valores, formas de pagamento e informações comerciais.
 
-O site permite consultar os modelos de dados, descrições das colunas, testes de qualidade, dependências e linhagem das transformações realizadas no Amazon Redshift Serverless.
+| Característica | Base utilizada no projeto |
+|---|---|
+| Origem | Arquivos CSV exportados pelo sistema comercial do cenário TechNova |
+| Quantidade de arquivos históricos | 34 |
+| Registros de pedidos após a carga e validação | 99.469 |
+| Período coberto | 01/01/2024 a 19/10/2026 |
+| Principais informações | Pedido, cliente, produto, data da compra, quantidade, valores, desconto, pagamento, status, canal, cidade e região |
+| Dados pessoais tratados | Nome, e-mail e CPF, sujeitos a mascaramento e controle de acesso |
 
-**[Acessar documentação interativa do dbt](https://fobious.github.io/technova-enterprise-dataops/)**
+Esses números representam o conjunto histórico utilizado e validado na implementação acadêmica; não indicam uma integração em tempo real com um sistema de vendas em produção.
 
-**[Consultar arquivos da documentação — branch gh-pages](https://github.com/Fobious/technova-enterprise-dataops/tree/gh-pages/docs)**
+## 3. Como foi feita a ingestão e o processamento
 
+A ingestão é **baseada em arquivos, em lote (batch)**: um mecanismo de ingestão identifica arquivos de vendas e os envia ao Amazon S3 com um usuário IAM dedicado e permissões limitadas ao necessário. A partir da camada Raw, o AWS Glue executa o processamento e organiza os dados para o uso analítico.
 
-## 2. Arquitetura da solução
+| Etapa | Serviço | O que foi implementado |
+|---|---|---|
+| Entrada / Raw | Amazon S3 | Recebimento e preservação dos CSV originais, com versionamento e bloqueio de acesso público |
+| Catalogação | AWS Glue Crawler / Data Catalog | Identificação e registro das estruturas de dados |
+| Bronze | AWS Glue + S3 | Padronização técnica, tipagem e rastreabilidade da origem e data de ingestão |
+| Silver | AWS Glue + S3 | Limpeza, validações, padronização e deduplicação |
+| Armazenamento otimizado | S3 | Dados tratados em **Apache Parquet**, com compressão **Snappy** e particionamento por data |
+| Data warehouse | Amazon Redshift Serverless | Carga dos dados tratados e disponibilização para modelagem analítica |
+| Gold | dbt + Redshift | Modelos dimensionais e testes de qualidade para consumo por BI e análises |
+
+A carga histórica validada processou **99.469 registros**, com conferência de integridade entre as etapas. O uso de Parquet e particionamento ajuda a reduzir o volume lido nas consultas analíticas.
+
+### Fluxo principal de dados
 
 ```mermaid
 flowchart TD
-    A["Arquivos CSV"] --> B["Amazon S3 | Raw"]
-    B --> C["AWS Glue | ETL"]
-    C --> D["Amazon S3 | Bronze / Silver"]
-    D --> E["Amazon Redshift Serverless"]
-    E --> F["dbt | Modelos e Testes"]
-    F --> G["Camada Gold"]
-    G --> H["Amazon QuickSight"]
-    G --> I["Feature View | Machine Learning"]
-
-    J["GitHub | main"] --> K["AWS CodePipeline"]
-    K --> L["AWS CodeBuild"]
-    L --> F
-    L --> M["AWS CDK / CloudFormation"]
-
-    L --> N["Amazon CloudWatch"]
-    N --> O["Amazon SNS | E-mail"]
+    A["Sistema comercial / CSV periódicos"] --> B["Script de ingestão"]
+    B --> C["S3 • Raw"]
+    C --> D["AWS Glue • Crawler e ETL"]
+    D --> E["S3 • Bronze e Silver / Parquet"]
+    E --> F["Redshift Serverless"]
+    F --> G["dbt • Staging, Intermediate e Gold"]
+    G --> H["QuickSight • Dashboard executivo"]
+    G --> I["Feature View • Machine Learning"]
+    E --> J["AWS Glue DataBrew • Masked"]
+    E -.-> K["Glue Data Catalog / Lake Formation"]
+    E --> L["Amazon Athena • Consultas ad hoc"]
 ```
 
-## 3. Tecnologias utilizadas
+## 4. O que o dashboard entrega ao negócio
 
-| Tecnologia | Responsabilidade |
-|---|---|
-| Amazon S3 | Armazenamento dos dados |
-| AWS Glue | Processamento ETL e catalogação |
-| Amazon Athena | Consultas SQL sobre dados no S3 |
-| Amazon Redshift Serverless | Data warehouse analítico |
-| dbt | Transformação, modelagem e testes |
-| Amazon QuickSight | Visualização de indicadores |
-| AWS CodePipeline | Orquestração do CI/CD |
-| AWS CodeBuild | Execução automatizada |
-| AWS CDK | Infraestrutura como código |
-| AWS CloudFormation | Implantação da infraestrutura |
-| Amazon CloudWatch | Logs e alarmes |
-| Amazon SNS | Notificações por e-mail |
-| Amazon EventBridge | Roteamento de eventos |
+O painel executivo foi desenvolvido no **Amazon QuickSight**, utilizando dados analíticos da camada Gold no Redshift e **SPICE** para acelerar a navegação.
 
-## 4. Transformação e qualidade dos dados
+Na versão apresentada no trabalho, o dashboard possui os seguintes indicadores:
 
-O dbt é utilizado para construir modelos analíticos no Redshift, organizados nas camadas de staging, intermediate e marts.
+| KPI | Resultado apresentado |
+|---|---:|
+| Receita total | R$ 92.624.761,25 |
+| Pedidos | 99.469 |
+| Ticket médio | R$ 931,19 |
+| Quantidade vendida | 125.595 |
 
-### Modelos implementados
+Além dos indicadores gerais, o painel permite analisar **receita por canal de venda, categoria de produto e região**, a **distribuição dos status dos pedidos** e a **evolução mensal da receita**. Os filtros incluem canal, status, região, categoria e período.
+
+**Finalidade:** substituir consolidações manuais por uma visão gerencial organizada, ajudando a identificar tendências comerciais, diferenças entre canais e regiões e o desempenho das vendas ao longo do tempo.
+
+## 5. Governança, segurança e LGPD
+
+A governança foi implementada em diferentes pontos da arquitetura:
+
+- **IAM:** usuários e funções com permissões específicas para ingestão e processamento, além de MFA no usuário utilizado para administrar o ambiente.
+- **Amazon S3:** versionamento dos dados originais e bloqueio de acesso público.
+- **AWS Glue DataBrew:** criação de uma camada **Masked** a partir da Silver, com mascaramento de nome, e-mail e CPF. A validação preservou a quantidade de 99.469 registros.
+- **AWS Lake Formation:** registro da localização governada da camada Silver, integração ao Glue Data Catalog e configuração de permissões em nível de coluna. O usuário operacional recebeu permissão de leitura na tabela `silver_vendas`, **com a coluna `cpf` excluída**.
+- **AWS Secrets Manager:** armazenamento de credenciais utilizadas na integração com Redshift.
+- **dbt:** testes de qualidade para apoiar a confiabilidade das transformações.
+
+**Por que Lake Formation aparece aqui mesmo sem arquivos próprios?** Parte da governança foi configurada diretamente nos serviços AWS e demonstrada nas evidências do relatório. Nem toda configuração feita no console ou pela CLI precisa corresponder a um script versionado; o README descreve o que foi implementado, sem afirmar que existe uma automação de governança que não foi entregue.
+
+## 6. Modelagem e qualidade com dbt
+
+No Amazon Redshift Serverless, o dbt organiza os dados nas camadas de *staging*, transformação intermediária e *marts*:
 
 - `stg_vendas`
 - `ref_vendas_enriquecidas`
@@ -87,93 +105,67 @@ O dbt é utilizado para construir modelos analíticos no Redshift, organizados n
 - `dim_tempo`
 - `fato_vendas`
 
-### Resultado da execução automatizada
+**Resultado validado em 02/11/2026:** **7 modelos** executados e **29 testes** aprovados, sem erros ou avisos na execução integrada (`PASS=36`, `ERROR=0`). Os testes incluem campos obrigatórios, unicidade, valores permitidos, relacionamentos e duas regras SQL personalizadas sobre cadastro de clientes e valores de pedidos.
 
-**Execução validada em 02/11/2026.**
+### Documentação navegável
 
-| Indicador | Resultado |
-|---|---:|
-| Modelos dbt | 7 |
-| Testes de qualidade | 29 |
-| Execuções aprovadas | 36 |
-| Erros | 0 |
-| Avisos | 0 |
+A documentação foi gerada com `dbt docs generate` e está hospedada no GitHub Pages:
 
-```text
-Completed successfully
-PASS=36 WARN=0 ERROR=0 SKIP=0
-TOTAL=36
+**➡️ [Abrir dbt Docs — modelos, colunas, testes e linhagem](https://fobious.github.io/technova-enterprise-dataops/)**
+
+Os arquivos publicados ficam na branch **[`gh-pages`](https://github.com/Fobious/technova-enterprise-dataops/tree/gh-pages/docs)**, separada da branch `main` usada pelo pipeline da AWS. Assim, a ausência de `docs/` na raiz da `main` é intencional.
+
+## 7. Consumo analítico e preparação para ML
+
+- **Amazon Athena:** consultas SQL *ad hoc* sobre dados do S3, com Workgroup dedicado, controle de dados processados por consulta e resultados armazenados em bucket S3 próprio para auditoria.
+- **Amazon QuickSight:** dashboard publicado com filtros, diferentes visualizações e dataset importado no SPICE.
+- **Feature View no Redshift:** `technova.vw_ml_customer_features`, que organiza atributos por cliente (como frequência, valor, recência, descontos e comportamento de compra) para futuro uso analítico ou em Machine Learning.
+
+## 8. CI/CD e infraestrutura como código
+
+O repositório usa GitHub como fonte de código. Alterações na branch `main` acionam o **AWS CodePipeline**, que coordena a execução do **AWS CodeBuild**. O CodeBuild segue o `buildspec.yml` para preparar dependências, validar a conexão com o Redshift, executar os modelos e testes dbt e realizar o deploy do **AWS CDK** por meio do CloudFormation.
+
+```mermaid
+flowchart LR
+    A["GitHub • main"] --> B["CodePipeline"]
+    B --> C["CodeBuild • buildspec.yml"]
+    C --> D["dbt • modelos e testes"]
+    C --> E["AWS CDK / CloudFormation"]
+    C -. logs e métricas .-> F["CloudWatch"]
+    F --> G["SNS • e-mail"]
 ```
 
-## 5. Automação CI/CD
+A execução integrada foi concluída com sucesso, inclusive após a reorganização do repositório. O monitoramento utiliza logs do CloudWatch, um alarme de falhas do projeto CodeBuild com ação SNS e uma regra EventBridge para eventos de falha do CodePipeline. O envio manual pelo SNS também foi validado.
 
-A integração contínua foi implementada utilizando GitHub, AWS CodePipeline e AWS CodeBuild.
+## 9. Provas de conceito e evolução da arquitetura
 
-O fluxo é iniciado automaticamente por alterações na branch `main`.
+O projeto também incluiu uma **PoC com Apache Iceberg** no Amazon Athena, com criação de tabela no S3 e execução de uma instrução `UPDATE`, além do uso de Parquet com Snappy no processamento dos dados.
 
-O CodeBuild utiliza o arquivo `buildspec.yml` para executar:
+Como evolução futura, foram avaliadas uma arquitetura híbrida orientada a eventos para vendas quase em tempo real, a integração da governança ao conceito de **Data Fabric** e tendências do **Modern Data Stack**: streaming, arquitetura Lakehouse e observabilidade de dados apoiada por IA. Essas evoluções não devem ser confundidas com os componentes já implantados.
 
-1. Instalação das dependências.
-2. Configuração e validação da conexão com o Redshift.
-3. Construção dos modelos e execução dos testes dbt.
-4. Deploy da infraestrutura utilizando AWS CDK.
-5. Limpeza da regra temporária de acesso ao Redshift.
-
-O AWS CDK define os recursos de CI/CD em Python, enquanto o CloudFormation realiza sua implantação.
-
-**Resultado:** a primeira execução integrada foi concluída com sucesso, incluindo os modelos dbt, testes e atualização da infraestrutura.
-
-## 6. Monitoramento
-
-O projeto utiliza Amazon CloudWatch e Amazon SNS para monitorar falhas.
-
-O alarme `TechNova-CodeBuild-FailedBuilds` acompanha a métrica `FailedBuilds` do CodeBuild, com limite de uma ou mais falhas em cinco minutos.
-
-Quando o alarme é acionado, o SNS está configurado para enviar notificações por e-mail.
-
-Também foi configurada uma regra EventBridge para identificar eventos de falha do CodePipeline.
-
-## 7. Analytics e Machine Learning
-
-O Amazon QuickSight foi utilizado para publicação de um dashboard gerencial baseado nos dados analíticos.
-
-Para preparação de dados para Machine Learning, foi criada uma Feature View no Redshift:
-
-`technova.vw_ml_customer_features`
-
-Essa estrutura disponibiliza atributos preparados para utilização por modelos analíticos e preditivos.
-
-## 8. Estrutura do repositório
+## 10. Estrutura do repositório
 
 ```text
 technova-enterprise-dataops/
-├── athena/
-│   └── queries/
-├── dbt/
-│   └── technova_dbt/
-├── glue/
-├── governance/
-│   └── lakeformation/
-├── infrastructure/
-│   ├── app.py
-│   ├── cdk.json
-│   └── infrastructure/
-│       └── infrastructure_stack.py
-├── redshift/
-│   └── sql/
+├── athena/queries/             # Consultas Athena versionadas
+├── dbt/technova_dbt/          # Modelos, testes e configuração dbt
+├── glue/                     # Scripts de processamento AWS Glue
+├── governance/lakeformation/ # Diretório de governança; configurações AWS descritas neste README
+├── infrastructure/           # Definições em Python do AWS CDK
+├── redshift/sql/             # Consultas SQL para Redshift
 ├── .gitignore
-├── buildspec.yml
+├── buildspec.yml             # Etapas do AWS CodeBuild
 └── README.md
+
+# Publicação separada: branch gh-pages, diretório docs/
 ```
 
-## 9. Segurança e configuração
+## 11. Evidências e observações
 
-As credenciais de conexão com o Redshift são armazenadas no AWS Secrets Manager, sem exposição de senhas no código-fonte.
+As evidências acadêmicas do trabalho incluem capturas das configurações AWS, processamento Glue, testes dbt, publicação da documentação, dashboard QuickSight, PoC Iceberg, automação CI/CD e monitoramento.
 
-O projeto utiliza permissões IAM para controlar o acesso dos serviços e configuração temporária de rede para a execução do dbt.
-
-A implantação pressupõe recursos AWS e permissões previamente configurados, conforme a arquitetura do projeto.
+Este repositório reúne código e documentação do projeto, mas **não é um instalador completo de toda a conta AWS**: algumas configurações de serviços gerenciados foram realizadas diretamente no ambiente e registradas no relatório. Por segurança, credenciais, tokens e dados pessoais não devem ser publicados aqui.
 
 ---
 
-**TechNova Varejo — Projeto acadêmico de Engenharia de Dados e DataOps.**
+**TechNova Varejo — Projeto acadêmico de Engenharia de Dados e DataOps na AWS.**
