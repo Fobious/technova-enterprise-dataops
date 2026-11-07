@@ -22,6 +22,17 @@ A solução contempla:
 - Integração e implantação contínua (CI/CD).
 - Monitoramento e notificações de falhas.
 
+## 📚 Documentação técnica — dbt Docs
+
+A documentação dos modelos analíticos foi gerada com `dbt docs generate` e publicada no GitHub Pages.
+
+O site permite consultar os modelos de dados, descrições das colunas, testes de qualidade, dependências e linhagem das transformações realizadas no Amazon Redshift Serverless.
+
+**[Acessar documentação interativa do dbt](https://fobious.github.io/technova-enterprise-dataops/)**
+
+**[Consultar arquivos da documentação — branch gh-pages](https://github.com/Fobious/technova-enterprise-dataops/tree/gh-pages/docs)**
+
+
 ## 2. Arquitetura da solução
 
 ```mermaid
