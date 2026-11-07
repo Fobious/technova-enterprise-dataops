@@ -3,8 +3,12 @@
 **Engenharia de Dados, Governança, Analytics e CI/CD na AWS**  
 Projeto acadêmico desenvolvido a partir de um cenário de modernização de dados no varejo.
 
-**[📚 Documentação interativa do dbt](https://fobious.github.io/technova-enterprise-dataops/)** · **[💻 Repositório GitHub](https://github.com/Fobious/technova-enterprise-dataops)**
+**[📚 Documentação interativa do dbt](https://fobious.github.io/technova-enterprise-dataops/)**  
 
+Organização das branches:
+
+- main: código-fonte principal, infraestrutura AWS, pipelines, transformações dbt e consultas SQL.
+- gh-pages: publicação da documentação técnica no GitHub Pages.
 ---
 
 ## 1. Contexto do negócio
